@@ -34,11 +34,11 @@ export default {
         type: 'point',
         external_reference: externalRef,
         expiration_time: 'PT15M',
-        transactions: { payments: [{ amount: 1.00 }] },
+        transactions: { payments: [{ amount: '1.00' }] },
         config: {
           point: {
             terminal_id: env.MP_DEVICE_ID,
-            print_on_terminal: true
+            print_on_terminal: 'true'
           }
         }
       };
@@ -78,8 +78,8 @@ export default {
             type: 'point',
             external_reference: externalRef,
             expiration_time: 'PT15M',
-            transactions: { payments: [{ amount: amount }] },
-            config: { point: { terminal_id: env.MP_DEVICE_ID, print_on_terminal: true } }
+            transactions: { payments: [{ amount: amount.toFixed(2) }] },
+            config: { point: { terminal_id: env.MP_DEVICE_ID, print_on_terminal: 'true' } }
           }),
         });
         const data = await mpResponse.json();
