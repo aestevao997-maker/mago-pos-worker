@@ -17,7 +17,6 @@ export default {
       return Response.json({ ok: true, service: 'mago-pos' }, { headers: corsHeaders });
     }
 
-    // CRIAR PAGAMENTO - nova API de Orders
     if (path === '/api/point/payment' && request.method === 'POST') {
       try {
         const body = await request.json();
@@ -38,9 +37,7 @@ export default {
             external_reference: externalRef,
             expiration_time: 'PT15M',
             transactions: {
-              payments: [
-                { amount: amount }
-              ]
+              payments: [{ amount: amount }]
             },
             config: {
               point: {
@@ -52,51 +49,35 @@ export default {
         });
 
         const data = await mpResponse.json();
-        return Response.json(data, { headers: corsHeaders });
+        // Retorna o erro completo do MP para debug
+        return Response.json({ mp_status: mpResponse.status, mp_response: data }, { headers: corsHeaders });
       } catch (err) {
         return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
       }
     }
 
-    // CONSULTAR STATUS DO PAGAMENTO
     if (path.startsWith('/api/point/payment/') && request.method === 'GET') {
       try {
         const orderId = path.replace('/api/point/payment/', '');
         const mpResponse = await fetch(`https://api.mercadopago.com/v1/orders/${orderId}`, {
-          headers: {
-            'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}`,
-          },
+          headers: { 'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}` },
         });
         const data = await mpResponse.json();
-
-        // Normaliza o status para o app entender
         const status = data.status;
         let state = 'OPEN';
         if (status === 'processed') state = 'FINISHED';
         if (status === 'canceled' || status === 'cancelled') state = 'CANCELED';
         if (status === 'error') state = 'ERROR';
-
         const payment = data.transactions?.payments?.[0];
         const paymentState = payment?.status === 'processed' ? 'APPROVED' : payment?.status;
-
-        return Response.json({
-          ...data,
-          state,
-          payment: { state: paymentState }
-        }, { headers: corsHeaders });
+        return Response.json({ ...data, state, payment: { state: paymentState } }, { headers: corsHeaders });
       } catch (err) {
         return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
       }
     }
 
-    // CANCELAR PAGAMENTO
     if (path === '/api/point/payment' && request.method === 'DELETE') {
-      try {
-        // Cancela pela order — precisa do ID, então apenas retorna ok
-        return Response.json({ ok: true }, { headers: corsHeaders });
-      } catch (err) {
-        return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
-      }
+      return Response.json({ ok: true }, { headers: corsHeaders });
     }
 
     return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
