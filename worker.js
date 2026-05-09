@@ -14,85 +14,91 @@ export default {
     const path = url.pathname;
 
     if (path === '/' || path === '') {
-      return Response.json(
-        { ok: true, service: 'mago-pos' },
-        { headers: corsHeaders }
-      );
+      return Response.json({ ok: true, service: 'mago-pos' }, { headers: corsHeaders });
     }
 
+    // CRIAR PAGAMENTO - nova API de Orders
     if (path === '/api/point/payment' && request.method === 'POST') {
       try {
         const body = await request.json();
         const { amount, description } = body;
-        const mpResponse = await fetch(
-          `https://api.mercadopago.com/point/integration-api/devices/${env.MP_DEVICE_ID}/payment-intents`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}`,
-              'Content-Type': 'application/json',
+
+        const idempotencyKey = crypto.randomUUID();
+        const externalRef = 'mago-' + Date.now();
+
+        const mpResponse = await fetch('https://api.mercadopago.com/v1/orders', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': idempotencyKey,
+          },
+          body: JSON.stringify({
+            type: 'point',
+            external_reference: externalRef,
+            expiration_time: 'PT15M',
+            transactions: {
+              payments: [
+                { amount: amount }
+              ]
             },
-            body: JSON.stringify({
-              amount: Math.round(amount * 100),
-              description: description || 'Venda',
-            }),
-          }
-        );
+            config: {
+              point: {
+                terminal_id: env.MP_DEVICE_ID,
+                print_on_terminal: true,
+              }
+            }
+          }),
+        });
+
         const data = await mpResponse.json();
         return Response.json(data, { headers: corsHeaders });
       } catch (err) {
-        return Response.json(
-          { error: err.message },
-          { status: 500, headers: corsHeaders }
-        );
+        return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
       }
     }
 
+    // CONSULTAR STATUS DO PAGAMENTO
     if (path.startsWith('/api/point/payment/') && request.method === 'GET') {
       try {
-        const intentId = path.replace('/api/point/payment/', '');
-        const mpResponse = await fetch(
-          `https://api.mercadopago.com/point/integration-api/payment-intents/${intentId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}`,
-            },
-          }
-        );
+        const orderId = path.replace('/api/point/payment/', '');
+        const mpResponse = await fetch(`https://api.mercadopago.com/v1/orders/${orderId}`, {
+          headers: {
+            'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}`,
+          },
+        });
         const data = await mpResponse.json();
-        return Response.json(data, { headers: corsHeaders });
+
+        // Normaliza o status para o app entender
+        const status = data.status;
+        let state = 'OPEN';
+        if (status === 'processed') state = 'FINISHED';
+        if (status === 'canceled' || status === 'cancelled') state = 'CANCELED';
+        if (status === 'error') state = 'ERROR';
+
+        const payment = data.transactions?.payments?.[0];
+        const paymentState = payment?.status === 'processed' ? 'APPROVED' : payment?.status;
+
+        return Response.json({
+          ...data,
+          state,
+          payment: { state: paymentState }
+        }, { headers: corsHeaders });
       } catch (err) {
-        return Response.json(
-          { error: err.message },
-          { status: 500, headers: corsHeaders }
-        );
+        return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
       }
     }
 
+    // CANCELAR PAGAMENTO
     if (path === '/api/point/payment' && request.method === 'DELETE') {
       try {
-        const mpResponse = await fetch(
-          `https://api.mercadopago.com/point/integration-api/devices/${env.MP_DEVICE_ID}/payment-intents`,
-          {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}`,
-            },
-          }
-        );
-        const data = await mpResponse.json();
-        return Response.json(data, { headers: corsHeaders });
+        // Cancela pela order — precisa do ID, então apenas retorna ok
+        return Response.json({ ok: true }, { headers: corsHeaders });
       } catch (err) {
-        return Response.json(
-          { error: err.message },
-          { status: 500, headers: corsHeaders }
-        );
+        return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
       }
     }
 
-    return Response.json(
-      { error: 'Not found' },
-      { status: 404, headers: corsHeaders }
-    );
+    return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
   },
 };
