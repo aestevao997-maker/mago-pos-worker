@@ -17,14 +17,21 @@ export default {
       return Response.json({ ok: true, service: 'mago-pos' }, { headers: corsHeaders });
     }
 
+    // NOVO: listar terminals para debug
+    if (path === '/api/terminals' && request.method === 'GET') {
+      const mpResponse = await fetch('https://api.mercadopago.com/point/integration-api/devices', {
+        headers: { 'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}` },
+      });
+      const data = await mpResponse.json();
+      return Response.json({ status: mpResponse.status, data }, { headers: corsHeaders });
+    }
+
     if (path === '/api/point/payment' && request.method === 'POST') {
       try {
         const body = await request.json();
         const { amount, description } = body;
-
         const idempotencyKey = crypto.randomUUID();
         const externalRef = 'mago-' + Date.now();
-
         const mpResponse = await fetch('https://api.mercadopago.com/v1/orders', {
           method: 'POST',
           headers: {
@@ -36,20 +43,11 @@ export default {
             type: 'point',
             external_reference: externalRef,
             expiration_time: 'PT15M',
-            transactions: {
-              payments: [{ amount: amount }]
-            },
-            config: {
-              point: {
-                terminal_id: env.MP_DEVICE_ID,
-                print_on_terminal: true,
-              }
-            }
+            transactions: { payments: [{ amount: amount }] },
+            config: { point: { terminal_id: env.MP_DEVICE_ID, print_on_terminal: true } }
           }),
         });
-
         const data = await mpResponse.json();
-        // Retorna o erro completo do MP para debug
         return Response.json({ mp_status: mpResponse.status, mp_response: data }, { headers: corsHeaders });
       } catch (err) {
         return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
