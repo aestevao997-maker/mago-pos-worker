@@ -69,7 +69,7 @@ export default {
         // Define forma de pagamento padrão na maquineta
         let defaultType = 'debit_card';
         if (type === 'credito') defaultType = 'credit_card';
-        if (type === 'pix') defaultType = 'bank_transfer';
+        
 
         const mpResponse = await fetch('https://api.mercadopago.com/v1/orders', {
           method: 'POST',
