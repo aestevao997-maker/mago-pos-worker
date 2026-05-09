@@ -23,7 +23,7 @@ export default {
     if (path === '/api/point/payment' && request.method === 'POST') {
       try {
         const body = await request.json();
-        const { amount, description, payment_method } = body;
+        const { amount, description } = body;
         const mpResponse = await fetch(
           `https://api.mercadopago.com/point/integration-api/devices/${env.MP_DEVICE_ID}/payment-intents`,
           {
@@ -35,7 +35,6 @@ export default {
             body: JSON.stringify({
               amount: Math.round(amount * 100),
               description: description || 'Venda',
-              payment_method: payment_method || 'credit_card',
             }),
           }
         );
