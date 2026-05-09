@@ -25,7 +25,6 @@ export default {
       return Response.json({ status: mpResponse.status, data }, { headers: corsHeaders });
     }
 
-    // Novo: pega terminal_id correto para /v1/orders
     if (path === '/api/terminals-v1' && request.method === 'GET') {
       const mpResponse = await fetch('https://api.mercadopago.com/terminals/v1/list', {
         headers: { 'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}` },
@@ -42,7 +41,10 @@ export default {
         external_reference: externalRef,
         expiration_time: 'PT15M',
         transactions: { payments: [{ amount: '1.00' }] },
-        config: { point: { terminal_id: env.MP_DEVICE_ID, print_on_terminal: 'seller_ticket' } }
+        config: {
+          point: { terminal_id: env.MP_DEVICE_ID, print_on_terminal: 'seller_ticket' },
+          payment_method: { default_type: 'debit_card' }
+        }
       };
       const mpResponse = await fetch('https://api.mercadopago.com/v1/orders', {
         method: 'POST',
@@ -60,9 +62,15 @@ export default {
     if (path === '/api/point/payment' && request.method === 'POST') {
       try {
         const body = await request.json();
-        const { amount } = body;
+        const { amount, type } = body;
         const idempotencyKey = crypto.randomUUID();
         const externalRef = 'mago-' + Date.now();
+
+        // Define forma de pagamento padrão na maquineta
+        let defaultType = 'debit_card';
+        if (type === 'credito') defaultType = 'credit_card';
+        if (type === 'pix') defaultType = 'bank_transfer';
+
         const mpResponse = await fetch('https://api.mercadopago.com/v1/orders', {
           method: 'POST',
           headers: {
@@ -75,7 +83,10 @@ export default {
             external_reference: externalRef,
             expiration_time: 'PT15M',
             transactions: { payments: [{ amount: parseFloat(amount).toFixed(2) }] },
-            config: { point: { terminal_id: env.MP_DEVICE_ID, print_on_terminal: 'seller_ticket' } }
+            config: {
+              point: { terminal_id: env.MP_DEVICE_ID, print_on_terminal: 'seller_ticket' },
+              payment_method: { default_type: defaultType }
+            }
           }),
         });
         const data = await mpResponse.json();
