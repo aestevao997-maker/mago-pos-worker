@@ -17,17 +17,7 @@ export default {
       return Response.json({ ok: true, service: 'mago-pos' }, { headers: corsHeaders });
     }
 
-    // Listar terminals (antigo)
     if (path === '/api/terminals' && request.method === 'GET') {
-      const mpResponse = await fetch('https://api.mercadopago.com/point/integration-api/devices', {
-        headers: { 'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}` },
-      });
-      const data = await mpResponse.json();
-      return Response.json({ status: mpResponse.status, data }, { headers: corsHeaders });
-    }
-
-    // Listar terminals v1 (endpoint correto para terminal_id)
-    if (path === '/api/terminals-v1' && request.method === 'GET') {
       const mpResponse = await fetch('https://api.mercadopago.com/terminals/v1/list', {
         headers: { 'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}` },
       });
@@ -35,47 +25,34 @@ export default {
       return Response.json({ status: mpResponse.status, data }, { headers: corsHeaders });
     }
 
-    // DIAGNÓSTICO
-    if (path === '/api/test-payment' && request.method === 'GET') {
-      const idempotencyKey = crypto.randomUUID();
-      const externalRef = 'mago-test-' + Date.now();
-      const body = {
-        type: 'point',
-        external_reference: externalRef,
-        expiration_time: 'PT15M',
-        transactions: { payments: [{ amount: '1.00' }] },
-        config: {
-          point: {
-            terminal_id: env.MP_DEVICE_ID,
-            print_on_terminal: 'seller_ticket'
-          }
-        }
-      };
-      const mpResponse = await fetch('https://api.mercadopago.com/v1/orders', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.MP_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json',
-          'X-Idempotency-Key': idempotencyKey,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await mpResponse.json();
-      return Response.json({
-        http_status: mpResponse.status,
-        device_id_used: env.MP_DEVICE_ID,
-        token_present: !!env.MP_ACCESS_TOKEN,
-        request_body: body,
-        mp_response: data
-      }, { headers: corsHeaders });
-    }
-
     if (path === '/api/point/payment' && request.method === 'POST') {
       try {
         const body = await request.json();
-        const { amount } = body;
+        const { amount, type } = body;
         const idempotencyKey = crypto.randomUUID();
         const externalRef = 'mago-' + Date.now();
+
+        // Monta config de forma de pagamento
+        // Documentação oficial: default_type aceita apenas "credit_card" ou "debit_card"
+        // Pix não é suportado via default_type na Point
+        const paymentMethodConfig = {};
+        if (type === 'debito') paymentMethodConfig.default_type = 'debit_card';
+        if (type === 'credito') paymentMethodConfig.default_type = 'credit_card';
+
+        const orderBody = {
+          type: 'point',
+          external_reference: externalRef,
+          expiration_time: 'PT15M',
+          transactions: { payments: [{ amount: parseFloat(amount).toFixed(2) }] },
+          config: {
+            point: {
+              terminal_id: env.MP_DEVICE_ID,
+              print_on_terminal: 'seller_ticket'
+            },
+            ...(Object.keys(paymentMethodConfig).length > 0 && { payment_method: paymentMethodConfig })
+          }
+        };
+
         const mpResponse = await fetch('https://api.mercadopago.com/v1/orders', {
           method: 'POST',
           headers: {
@@ -83,19 +60,17 @@ export default {
             'Content-Type': 'application/json',
             'X-Idempotency-Key': idempotencyKey,
           },
-          body: JSON.stringify({
-            type: 'point',
-            external_reference: externalRef,
-            expiration_time: 'PT15M',
-            transactions: { payments: [{ amount: parseFloat(amount).toFixed(2) }] },
-            config: { point: { terminal_id: env.MP_DEVICE_ID, print_on_terminal: 'seller_ticket' } }
-          }),
+          body: JSON.stringify(orderBody),
         });
+
         const data = await mpResponse.json();
+
         if (!mpResponse.ok) {
           return Response.json({ error: true, mp_status: mpResponse.status, mp_response: data }, { status: 400, headers: corsHeaders });
         }
+
         return Response.json({ id: data.id, mp_status: mpResponse.status, mp_response: data }, { headers: corsHeaders });
+
       } catch (err) {
         return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
       }
