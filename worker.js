@@ -2,7 +2,7 @@ export default {
   async fetch(request, env) {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     };
 
@@ -20,7 +20,7 @@ export default {
       );
     }
 
-    if (path === '/payment' && request.method === 'POST') {
+    if (path === '/api/point/payment' && request.method === 'POST') {
       try {
         const body = await request.json();
         const { amount, description, payment_method } = body;
@@ -49,9 +49,9 @@ export default {
       }
     }
 
-    if (path.startsWith('/payment/') && request.method === 'GET') {
+    if (path.startsWith('/api/point/payment/') && request.method === 'GET') {
       try {
-        const intentId = path.replace('/payment/', '');
+        const intentId = path.replace('/api/point/payment/', '');
         const mpResponse = await fetch(
           `https://api.mercadopago.com/point/integration-api/payment-intents/${intentId}`,
           {
@@ -70,11 +70,10 @@ export default {
       }
     }
 
-    if (path.startsWith('/cancel/') && request.method === 'DELETE') {
+    if (path === '/api/point/payment' && request.method === 'DELETE') {
       try {
-        const intentId = path.replace('/cancel/', '');
         const mpResponse = await fetch(
-          `https://api.mercadopago.com/point/integration-api/devices/${env.MP_DEVICE_ID}/payment-intents/${intentId}`,
+          `https://api.mercadopago.com/point/integration-api/devices/${env.MP_DEVICE_ID}/payment-intents`,
           {
             method: 'DELETE',
             headers: {
